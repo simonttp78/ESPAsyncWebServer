@@ -181,7 +181,7 @@ public:
  */
 
 
-AsyncWebSocketMessage::AsyncWebSocketMessage(AsyncWebSocketMessageBuffer buffer, uint8_t opcode, bool mask) :
+AsyncWebSocketMessage::AsyncWebSocketMessage(std::shared_ptr<std::vector<uint8_t>> buffer, uint8_t opcode, bool mask) :
     _WSbuffer{buffer},
     _opcode(opcode & 0x07),
     _mask{mask},
@@ -643,11 +643,38 @@ size_t AsyncWebSocketClient::printf_P(PGM_P formatP, ...)
 }
 #endif
 
-AsyncWebSocketMessageBuffer AsyncWebSocketClient::makeBuffer(const uint8_t *message, size_t len)
+namespace {
+std::shared_ptr<std::vector<uint8_t>> makeBuffer(const uint8_t *message, size_t len)
 {
     auto buffer = std::make_shared<std::vector<uint8_t>>(len);
     std::memcpy(buffer->data(), message, len);
     return buffer;
+}
+}
+
+void AsyncWebSocketClient::text(std::shared_ptr<std::vector<uint8_t>> buffer)
+{
+    _queueMessage(buffer);
+}
+
+void AsyncWebSocketClient::text(const uint8_t *message, size_t len)
+{
+    text(makeBuffer(message, len));
+}
+
+void AsyncWebSocketClient::text(const char *message, size_t len)
+{
+    text((const uint8_t *)message, len);
+}
+
+void AsyncWebSocketClient::text(const char *message)
+{
+    text(message, strlen(message));
+}
+
+void AsyncWebSocketClient::text(const String &message)
+{
+    text(message.c_str(), message.length());
 }
 
 void AsyncWebSocketClient::text(const __FlashStringHelper *data)
@@ -671,6 +698,31 @@ void AsyncWebSocketClient::text(const __FlashStringHelper *data)
     }
 }
 
+void AsyncWebSocketClient::binary(std::shared_ptr<std::vector<uint8_t>> buffer)
+{
+    _queueMessage(buffer, WS_BINARY);
+}
+
+void AsyncWebSocketClient::binary(const uint8_t *message, size_t len)
+{
+    binary(makeBuffer(message, len));
+}
+
+void AsyncWebSocketClient::binary(const char *message, size_t len)
+{
+    binary((const uint8_t *)message, len);
+}
+
+void AsyncWebSocketClient::binary(const char *message)
+{
+    binary(message, strlen(message));
+}
+
+void AsyncWebSocketClient::binary(const String &message)
+{
+    binary(message.c_str(), message.length());
+}
+
 void AsyncWebSocketClient::binary(const __FlashStringHelper *data, size_t len)
 {
     PGM_P p = reinterpret_cast<PGM_P>(data);
@@ -685,7 +737,7 @@ void AsyncWebSocketClient::binary(const __FlashStringHelper *data, size_t len)
 IPAddress AsyncWebSocketClient::remoteIP() const
 {
     if (!_client)
-        return IPAddress((uint32_t)0);
+        return IPAddress(0U);
 
     return _client->remoteIP();
 }
@@ -798,14 +850,22 @@ void AsyncWebSocket::pingAll(const uint8_t *data, size_t len)
             c.ping(data, len);
 }
 
-void AsyncWebSocket::text(uint32_t id, AsyncWebSocketMessageBuffer message){
-    if (AsyncWebSocketClient * c = client(id))
-        c->message(message);
-};
 void AsyncWebSocket::text(uint32_t id, const uint8_t *message, size_t len)
 {
     if (AsyncWebSocketClient * c = client(id))
         c->text(makeBuffer(message, len));
+}
+void AsyncWebSocket::text(uint32_t id, const char *message, size_t len)
+{
+    text(id, (const uint8_t *)message, len);
+}
+void AsyncWebSocket::text(uint32_t id, const char * message)
+{
+    text(id, message, strlen(message));
+}
+void AsyncWebSocket::text(uint32_t id, const String &message)
+{
+    text(id, message.c_str(), message.length());
 }
 void AsyncWebSocket::text(uint32_t id, const __FlashStringHelper *data)
 {
@@ -829,7 +889,7 @@ void AsyncWebSocket::text(uint32_t id, const __FlashStringHelper *data)
     }
 }
 
-void AsyncWebSocket::textAll(AsyncWebSocketMessageBuffer buffer)
+void AsyncWebSocket::textAll(std::shared_ptr<std::vector<uint8_t>> buffer)
 {
     for (auto &c : _clients)
         if (c.status() == WS_CONNECTED)
@@ -872,10 +932,6 @@ void AsyncWebSocket::textAll(const __FlashStringHelper *data)
     }
 }
 
-void AsyncWebSocket::binary(uint32_t id, AsyncWebSocketMessageBuffer message){
-    if (AsyncWebSocketClient * c = client(id))
-        c->binary(message);
-};
 void AsyncWebSocket::binary(uint32_t id, const uint8_t *message, size_t len)
 {
     if (AsyncWebSocketClient *c = client(id))
@@ -905,7 +961,7 @@ void AsyncWebSocket::binary(uint32_t id, const __FlashStringHelper *data, size_t
     }
 }
 
-void AsyncWebSocket::binaryAll(AsyncWebSocketMessageBuffer buffer)
+void AsyncWebSocket::binaryAll(std::shared_ptr<std::vector<uint8_t>> buffer)
 {
     for (auto &c : _clients)
         if (c.status() == WS_CONNECTED)
@@ -966,7 +1022,7 @@ size_t AsyncWebSocket::printfAll(const char *format, ...)
     va_end(arg);
     delete[] temp;
 
-    AsyncWebSocketMessageBuffer buffer = std::make_shared<std::vector<uint8_t>>(len);
+    std::shared_ptr<std::vector<uint8_t>> buffer = std::make_shared<std::vector<uint8_t>>(len);
 
     va_start(arg, format);
     vsnprintf( (char *)buffer->data(), len + 1, format, arg);
@@ -1002,7 +1058,7 @@ size_t AsyncWebSocket::printfAll_P(PGM_P formatP, ...)
     va_end(arg);
     delete[] temp;
 
-    AsyncWebSocketMessageBuffer buffer = std::make_shared<std::vector<uint8_t>>(len + 1);
+    std::shared_ptr<std::vector<uint8_t>> buffer = std::make_shared<std::vector<uint8_t>>(len + 1);
 
     va_start(arg, formatP);
     vsnprintf_P((char *)buffer->data(), len + 1, formatP, arg);
@@ -1085,13 +1141,6 @@ void AsyncWebSocket::handleRequest(AsyncWebServerRequest *request)
     request->send(response);
 }
 
-AsyncWebSocketMessageBuffer AsyncWebSocket::makeBuffer(const uint8_t *message, size_t len)
-{
-    auto buffer = std::make_shared<std::vector<uint8_t>>(len);
-    std::memcpy(buffer->data(), message, len);
-    return buffer;
-}
-
 /*
  * Response to Web Socket request - sends the authorization and detaches the TCP Client from the web server
  * Authentication code from https://github.com/Links2004/arduinoWebSockets/blob/master/src/WebSockets.cpp#L480
@@ -1159,4 +1208,3 @@ size_t AsyncWebSocketResponse::_ack(AsyncWebServerRequest *request, size_t len, 
 
     return 0;
 }
-
