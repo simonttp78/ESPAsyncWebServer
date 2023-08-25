@@ -18,8 +18,8 @@
   "platforms": ["espressif32"],
   "dependencies": [
     {
-      "owner": "esphome",
-      "name": "AsyncTCP-simonttp78",
+      "owner": "simonttp78",
+      "name": "AsyncTCP",
       "platforms": ["espressif32"]
     }
   ]
